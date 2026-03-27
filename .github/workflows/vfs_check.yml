@@ -19,7 +19,7 @@ on:
 jobs:
   check-appointments:
     name: Check VFS Slots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     # Cancel any in-progress run if a new one starts
     concurrency:
