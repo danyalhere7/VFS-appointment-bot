@@ -1,9 +1,10 @@
 """
 captcha_handler.py - Detects and handles CAPTCHA challenges.
 
-Strategy priority:
-  1. If CAPTCHA_API_KEY is set → solve automatically via 2Captcha
-  2. Otherwise              → notify user and wait for manual resolution
+On GitHub Actions (headless cloud):
+  - CAPTCHA is unlikely since each run uses a fresh IP
+  - If detected, logs a warning and sends a Gmail alert
+  - Waits briefly then continues (cannot solve manually in cloud mode)
 """
 
 import time
@@ -44,18 +45,16 @@ class CaptchaHandler:
         if config.CAPTCHA_API_KEY:
             return self._solve_via_api(page)
         else:
-            return self._solve_manually(page)
+            return self._notify_and_skip(page)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _solve_via_api(self, page: Page) -> bool:
-        """Use 2Captcha API to solve reCAPTCHA automatically."""
+        """Use 2Captcha API to solve reCAPTCHA automatically (if key is configured)."""
         try:
             from twocaptcha import TwoCaptcha  # type: ignore
 
             solver = TwoCaptcha(config.CAPTCHA_API_KEY)
-
-            # Extract sitekey from the page
             sitekey = page.eval_on_selector(
                 ".g-recaptcha, iframe[src*='recaptcha']",
                 "el => el.getAttribute('data-sitekey') || "
@@ -64,13 +63,11 @@ class CaptchaHandler:
 
             if not sitekey:
                 logger.error("Could not extract reCAPTCHA sitekey.")
-                return self._solve_manually(page)
+                return self._notify_and_skip(page)
 
             logger.info("Sending reCAPTCHA to 2Captcha (sitekey: %s…)", sitekey[:8])
             result = solver.recaptcha(sitekey=sitekey, url=page.url)
             token = result["code"]
-
-            # Inject the token and submit
             page.evaluate(
                 f"document.getElementById('g-recaptcha-response').innerHTML = '{token}';"
             )
@@ -79,32 +76,27 @@ class CaptchaHandler:
 
         except Exception as exc:
             logger.error("2Captcha API error: %s", exc)
-            return self._solve_manually(page)
+            return self._notify_and_skip(page)
 
-    def _solve_manually(self, page: Page) -> bool:
-        """Notify user to solve CAPTCHA manually, then wait up to 5 minutes."""
-        wait_seconds = 300  # 5 minutes
-
+    def _notify_and_skip(self, page: Page) -> bool:
+        """
+        Send a Gmail alert about the CAPTCHA and skip this run.
+        In cloud/headless mode we cannot solve manually, so we just
+        let the next scheduled run try again from a fresh IP.
+        """
         msg = (
-            "⚠️ CAPTCHA Detected!\n\n"
-            "The VFS bot has encountered a CAPTCHA and needs your help.\n"
-            f"Please open the browser and solve it within {wait_seconds // 60} minutes.\n"
+            "⚠️ CAPTCHA Detected on VFS Website\n\n"
+            "The automated check was blocked by a CAPTCHA.\n"
+            "This is rare — the next run in 10 minutes will use a fresh IP and likely succeed.\n"
             f"URL: {page.url}"
         )
-        self.notifier.send_all(
-            title="VFS Bot — CAPTCHA Required",
-            message=msg,
-        )
-        logger.info(
-            "Waiting up to %d seconds for manual CAPTCHA resolution…", wait_seconds
-        )
+        try:
+            self.notifier.send_all(
+                title="VFS Bot — CAPTCHA Encountered",
+                message=msg,
+            )
+        except Exception as exc:
+            logger.error("Could not send CAPTCHA notification: %s", exc)
 
-        start = time.time()
-        while time.time() - start < wait_seconds:
-            time.sleep(10)
-            if not self.is_captcha_present(page):
-                logger.info("CAPTCHA resolved by user.")
-                return True
-
-        logger.error("CAPTCHA not resolved within timeout — will retry next cycle.")
+        logger.info("CAPTCHA: skipping this run — next run will retry automatically.")
         return False

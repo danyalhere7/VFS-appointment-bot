@@ -2,7 +2,7 @@
 session_manager.py - Manages the Playwright browser session.
 
 Responsibilities:
-  - Launch Chromium with stealth settings (minimize bot fingerprinting)
+  - Launch Chromium with stealth JS (no external package dependencies)
   - Load / save cookies to persist login across restarts
   - Detect session expiry and handle re-login
   - Perform random human-like interactions (mouse jitter, scroll)
@@ -32,7 +32,7 @@ class SessionManager:
 
     def start(self) -> Page:
         """Launch the browser, load saved cookies, and return the active page."""
-        logger.info("Starting browser session…")
+        logger.info("Starting browser session (headless=%s)…", config.HEADLESS)
         self._playwright = sync_playwright().start()
 
         self._browser = self._playwright.chromium.launch(
@@ -42,7 +42,9 @@ class SessionManager:
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-infobars",
-                "--start-maximized",
+                "--disable-extensions",
+                "--disable-gpu",
+                "--window-size=1366,768",
             ],
         )
 
@@ -53,7 +55,7 @@ class SessionManager:
             timezone_id="Asia/Karachi",
         )
 
-        # Apply stealth patches to evade bot detection
+        # Apply inline stealth patches (no external package needed)
         self._apply_stealth()
 
         self.page = self._context.new_page()
@@ -139,15 +141,43 @@ class SessionManager:
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _apply_stealth(self) -> None:
-        """Inject stealth JS to hide Playwright/Chromium automation signals."""
+        """
+        Inject stealth JS using Playwright's built-in add_init_script.
+        This does NOT require the playwright-stealth package.
+        """
         stealth_js = """
+        // Hide webdriver flag
         Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-        Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-        window.chrome = { runtime: {} };
-        Object.defineProperty(navigator, 'permissions', {
-            get: () => ({ query: () => Promise.resolve({ state: 'granted' }) })
+
+        // Fake plugins list
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [
+                {name: 'Chrome PDF Plugin'},
+                {name: 'Chrome PDF Viewer'},
+                {name: 'Native Client'}
+            ]
         });
+
+        // Fake languages
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en', 'ur']
+        });
+
+        // Add chrome runtime object
+        if (!window.chrome) {
+            window.chrome = { runtime: {}, loadTimes: function(){}, csi: function(){} };
+        }
+
+        // Fix permissions
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications'
+                ? Promise.resolve({ state: Notification.permission })
+                : originalQuery(parameters)
+        );
+
+        // Hide automation-related properties
+        delete navigator.__proto__.webdriver;
         """
         self._context.add_init_script(stealth_js)
 
@@ -185,8 +215,12 @@ class SessionManager:
         self.navigate(config.VFS_LOGIN_URL)
 
         try:
-            self.page.wait_for_selector("input[type='email'], input[name='email']", timeout=15_000)
-            self._human_type("input[type='email'], input[name='email']", config.VFS_EMAIL)
+            self.page.wait_for_selector(
+                "input[type='email'], input[name='email']", timeout=15_000
+            )
+            self._human_type(
+                "input[type='email'], input[name='email']", config.VFS_EMAIL
+            )
             self._human_type("input[type='password']", config.VFS_PASSWORD)
             self.page.click("button[type='submit'], input[type='submit']")
             self.page.wait_for_load_state("networkidle", timeout=30_000)

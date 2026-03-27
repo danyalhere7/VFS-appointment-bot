@@ -2,8 +2,7 @@
 #  VFS Global Appointment Bot — GitHub Actions Workflow
 #
 #  Runs check_once.py every 10 minutes, 24 hours/day, 7 days/week.
-#  All secrets (email credentials) are stored in GitHub Repository Secrets
-#  and passed as environment variables — they are NEVER stored in the code.
+#  All secrets (email credentials) are stored in GitHub Repository Secrets.
 #
 #  Free tier usage on a PUBLIC repo: Unlimited minutes ✅
 # ─────────────────────────────────────────────────────────────────────────────
@@ -12,7 +11,6 @@ name: VFS Appointment Check
 
 on:
   schedule:
-    # Runs every 10 minutes (GitHub's minimum supported interval is 5 minutes)
     - cron: '*/10 * * * *'
 
   # Allow running manually from GitHub Actions tab for testing
@@ -23,13 +21,13 @@ jobs:
     name: Check VFS Slots
     runs-on: ubuntu-latest
 
-    # Cancel any in-progress run if a new one starts (prevents overlapping checks)
+    # Cancel any in-progress run if a new one starts
     concurrency:
       group: vfs-check
       cancel-in-progress: true
 
     steps:
-      # ── 1. Check out the repository code ───────────────────────────────────
+      # ── 1. Check out repository code ───────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -42,15 +40,16 @@ jobs:
 
       # ── 3. Install Python dependencies ─────────────────────────────────────
       - name: Install Python packages
-        run: pip install -r requirements.txt
-
-      # ── 4. Install Playwright system dependencies + Chromium ───────────────
-      - name: Install Playwright & Chromium
         run: |
-          playwright install-deps chromium
-          playwright install chromium
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-      # ── 5. Create required directories ─────────────────────────────────────
+      # ── 4. Install Playwright Chromium (with system dependencies) ──────────
+      - name: Install Playwright Chromium
+        run: |
+          python -m playwright install --with-deps chromium
+
+      # ── 5. Create required runtime directories ─────────────────────────────
       - name: Create runtime directories
         run: |
           mkdir -p session
@@ -75,6 +74,7 @@ jobs:
           VFS_COUNTRY:     Austria
           VFS_SERVICE:     Document Legalization
           HEADLESS:        "true"
+          CAPTCHA_API_KEY: ""
 
         run: python check_once.py
 
