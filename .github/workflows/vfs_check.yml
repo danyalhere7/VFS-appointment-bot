@@ -11,7 +11,7 @@ name: VFS Appointment Check
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '4,14,24,34,44,54 * * * *'
 
   # Allow running manually from GitHub Actions tab for testing
   workflow_dispatch:
