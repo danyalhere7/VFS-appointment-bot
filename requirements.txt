@@ -1,0 +1,21 @@
+# VFS Global Appointment Bot — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Browser Automation
+playwright==1.43.0
+playwright-stealth==1.0.6
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# HTTP requests (Telegram API, 2Captcha)
+requests==2.31.0
+
+# Desktop notifications
+plyer==2.1.0
+
+# CAPTCHA solving service (optional)
+2captcha-python==1.2.4
+
+# Colored logging (optional but recommended)
+colorlog==6.8.2

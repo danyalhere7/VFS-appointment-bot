@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  VFS Global Appointment Bot — GitHub Actions Workflow
+#
+#  Runs check_once.py every 10 minutes, 24 hours/day, 7 days/week.
+#  All secrets (email credentials) are stored in GitHub Repository Secrets
+#  and passed as environment variables — they are NEVER stored in the code.
+#
+#  Free tier usage on a PUBLIC repo: Unlimited minutes ✅
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: VFS Appointment Check
+
+on:
+  schedule:
+    # Runs every 10 minutes (GitHub's minimum supported interval is 5 minutes)
+    - cron: '*/10 * * * *'
+
+  # Allow running manually from GitHub Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  check-appointments:
+    name: Check VFS Slots
+    runs-on: ubuntu-latest
+
+    # Cancel any in-progress run if a new one starts (prevents overlapping checks)
+    concurrency:
+      group: vfs-check
+      cancel-in-progress: true
+
+    steps:
+      # ── 1. Check out the repository code ───────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python 3.11 ──────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ── 3. Install Python dependencies ─────────────────────────────────────
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+
+      # ── 4. Install Playwright system dependencies + Chromium ───────────────
+      - name: Install Playwright & Chromium
+        run: |
+          playwright install-deps chromium
+          playwright install chromium
+
+      # ── 5. Create required directories ─────────────────────────────────────
+      - name: Create runtime directories
+        run: |
+          mkdir -p session
+          mkdir -p logs
+
+      # ── 6. Run the appointment check ───────────────────────────────────────
+      - name: Run VFS appointment check
+        env:
+          # VFS login credentials
+          VFS_EMAIL:       ${{ secrets.VFS_EMAIL }}
+          VFS_PASSWORD:    ${{ secrets.VFS_PASSWORD }}
+
+          # Gmail notification credentials
+          EMAIL_SENDER:    ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD:  ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER:  ${{ secrets.EMAIL_RECEIVER }}
+          SMTP_HOST:       smtp.gmail.com
+          SMTP_PORT:       "587"
+
+          # Bot settings
+          CITIES:          Islamabad,Lahore
+          VFS_COUNTRY:     Austria
+          VFS_SERVICE:     Document Legalization
+          HEADLESS:        "true"
+
+        run: python check_once.py
+
+      # ── 7. Upload log file as artifact (viewable in GitHub Actions tab) ────
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vfs-check-log-${{ github.run_number }}
+          path: logs/vfs_bot.log
+          retention-days: 7
