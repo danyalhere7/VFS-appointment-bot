@@ -1,0 +1,42 @@
+# =============================================================================
+#  .dockerignore — Files to exclude from the Docker build context
+#
+#  Keeps the image lean and prevents secrets from leaking into layers.
+# =============================================================================
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment (dependencies are installed inside the image)
+venv/
+.venv/
+env/
+
+# Local secrets — NEVER bake these into the image
+.env
+*.env
+
+# Session cookies (runtime data, not source code)
+session/
+logs/
+
+# Git history
+.git/
+.gitignore
+
+# IDE / OS artifacts
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Test files
+tests/
+*.test.py
+
+# Documentation (optional — remove if you want docs in the image)
+*.md

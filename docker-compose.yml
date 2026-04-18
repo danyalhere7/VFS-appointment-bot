@@ -1,0 +1,48 @@
+# =============================================================================
+#  docker-compose.yml — Local Development & Testing
+#
+#  Runs the VFS bot inside a container locally without needing to install
+#  Playwright or its browser binaries on your host machine.
+#
+#  Usage:
+#    docker compose up --build          # Run one check cycle
+#    docker compose run bot python main.py  # Run continuous local loop
+#
+#  Secrets are loaded from your local .env file (which is git-ignored).
+# =============================================================================
+
+version: "3.9"
+
+services:
+  bot:
+    # Build from local Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Target the final runtime stage (skip if you want the full build)
+      target: runtime
+
+    image: vfs-appointment-bot:local
+
+    container_name: vfs-bot
+
+    # Load all credentials and config from your local .env file
+    env_file:
+      - .env
+
+    # Force headless mode inside the container (no display available)
+    environment:
+      HEADLESS: "true"
+      PYTHONUNBUFFERED: "1"
+
+    # Mount logs directory so you can inspect output on your host machine
+    volumes:
+      - ./logs:/app/logs
+      # Persist browser session cookies between runs
+      - ./session:/app/session
+
+    # Restart policy: "no" because this is a one-shot script, not a server
+    restart: "no"
+
+    # Default command: single check cycle (mirrors GitHub Actions behaviour)
+    command: ["python", "check_once.py"]
